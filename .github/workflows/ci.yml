@@ -42,6 +42,9 @@ jobs:
           sudo apt-get install -y mingw-w64
           support/win-cross-compile 32
           support/win-cross-compile 64
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4.0.0
+            
   macos-build:
     name: MacOS CI
     strategy:
