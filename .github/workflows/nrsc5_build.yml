@@ -1,0 +1,159 @@
+name: Build NRSC5 Binaries
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+           description: "Build arch"
+           required: true
+           default: "x64 & x64"
+           type: choice
+           options:
+           - x64
+           - x86
+           - x86 & x64
+           - arm
+           - arm64
+      os:
+         description: "Compiling OSs"
+         required: true
+         type: array
+         default: "ubuntu-latest"
+         options:
+         - ubuntu-latest
+         - macos-latest
+         - windows-latest
+      mingw:
+          description: "Windows Build?"
+          required: true
+          default: true
+          type: tf
+jobs:
+  matrix:
+    runs-on: "${{ github.event.inputs.os }}"
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Generate build matrix
+        id: set-matrix
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let matrix = {};
+            let arch = "${{ github.event.inputs.arch }}"
+            switch ( arch ) {
+              case "x64":
+                matrix.arch = ["x64"];
+                break;
+              case "x86":
+                matrix.arch = ["x86"];
+                break;
+              case "arm":
+                matrix.arch = ["arm"];
+                break;
+              case "arm64":
+                matrix.arch = ["arm64"];
+                break;
+            }
+            core.setOutput("matrix",JSON.stringify(matrix));
+  windows-build:
+    name: MSYS2 Test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: git mingw-w64-x86_64-cc
+      - name: MSYS2 Setup
+        run: D:\a\nrsc5-bin\nrsc5-bin\support\msys2-build
+      - uses: actions/upload-artifact@v3
+        with:
+          name: windows-latest
+          path: D:\a\nrsc5-bin\nrsc5-bin\bin
+  ubuntu-build:
+    name: Ubuntu CI
+    runs-on: "${{ github.event.inputs.os }}"
+    steps:
+      - name: Install dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y libao-dev libfftw3-dev librtlsdr-dev python3-pyaudio
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+      - name: Compile
+        working-directory: build
+        run: make -j3
+      - name: Install
+        working-directory: build
+        run: |
+          sudo make install
+          sudo ldconfig
+      - name: Test
+        run: |
+          xz -d < support/sample.xz > sample
+          nrsc5 -r sample -o sample.wav 0 2> sample.log
+          cat sample.log
+          grep -q "You're Listening to Q" sample.log
+          cat sample | nrsc5 -r - -o sample.wav 0 2> sample.log
+          grep -q "You're Listening to Q" sample.log
+          support/cli.py -r sample 0
+          cat sample | support/cli.py -r - 0
+      - name: Windows cross-compile
+        run: |
+          sudo apt-get install -y mingw-w64
+          support/win-cross-compile 32
+          support/win-cross-compile 64
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "${{ github.event.inputs.os }}"
+          path: /home/runner/work/nrsc5-bin
+          
+  macos11-build:
+    name: MacOS Latest
+    runs-on: macos-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew install autoconf automake libao fftw librtlsdr portaudio
+          pip3 install --global-option=build_ext --global-option="-I/usr/local/include/" --global-option="-L/usr/local/lib" pyaudio
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+      - name: Compile
+        working-directory: build
+        run: make -j3
+      - name: Install
+        working-directory: build
+        run: make install
+      - name: Test
+        run: |
+          xz -d < support/sample.xz > sample
+          nrsc5 -r sample -o sample.wav 0 2> sample.log
+          cat sample.log
+          grep -q "You're Listening to Q" sample.log
+          cat sample | nrsc5 -r - -o sample.wav 0 2> sample.log
+          grep -q "You're Listening to Q" sample.log
+          support/cli.py -r sample 0
+          cat sample | support/cli.py -r - 0
+      - name: Windows cross-compile
+        run: |
+          brew install --cask xquartz wine-stable
+          brew install mingw-w64
+          support/win-cross-compile 32
+          support/win-cross-compile 64
+      - uses: actions/upload-artifact@v3
+        with:
+          name: macos-latest
+          path: nrsc5/build
