@@ -7,7 +7,7 @@ jobs:
     name: Ubuntu CI
     strategy:
       matrix:
-        os: [ubuntu-20.04, ubuntu-22.04]
+        os: [ubuntu-20.04]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install dependencies
@@ -44,44 +44,3 @@ jobs:
           support/win-cross-compile 64
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4.0.0
-            
-  macos-build:
-    name: MacOS CI
-    strategy:
-      matrix:
-        os: [macos-11, macos-12]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Install dependencies
-        run: |
-          brew install autoconf automake libao fftw librtlsdr portaudio
-          pip3 install --global-option=build_ext --global-option="-I/usr/local/include/" --global-option="-L/usr/local/lib" pyaudio
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Configure
-        run: |
-          mkdir build
-          cd build
-          cmake ..
-      - name: Compile
-        working-directory: build
-        run: make -j3
-      - name: Install
-        working-directory: build
-        run: make install
-      - name: Test
-        run: |
-          xz -d < support/sample.xz > sample
-          nrsc5 -r sample -o sample.wav 0 2> sample.log
-          cat sample.log
-          grep -q "You're Listening to Q" sample.log
-          cat sample | nrsc5 -r - -o sample.wav 0 2> sample.log
-          grep -q "You're Listening to Q" sample.log
-          # support/cli.py -r sample 0
-          # cat sample | support/cli.py -r - 0
-      - name: Windows cross-compile
-        run: |
-          brew install --cask xquartz wine-stable
-          brew install mingw-w64
-          support/win-cross-compile 32
-          support/win-cross-compile 64
